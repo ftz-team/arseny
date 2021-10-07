@@ -13,3 +13,13 @@ services:
     ports:
       - 8000:8000
     # Файл содержащий переменные для контейнера
+
+  bot:
+    # Берем Dockerfile из каталога app
+    build: .
+    # Запускаем тестовый сервер
+    command: python manage.py start_bot
+    # куда будут помещены данные из каталога app
+    volumes:
+      - ./app/:/usr/src/app/
+    # Открываем порт 8000 внутри и снаружи
