@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-
+import os
 from telebot.types import User
 from core.parsers import get_latest_from_vk, get_last_vacancies_from_rabota_ru, getLatestFromTrud
-from core.models import Position, User
+from core.models import Position, User, Tag
 from background_task import background
 from datetime import datetime, timedelta
 import pymorphy2
@@ -10,22 +10,25 @@ import string
 import re
 import nltk
 import gensim
+import requests
 import catboost
 import numpy as np
 nltk.download('stopwords')
 nltk.download('punkt')
 import pathlib
 print(pathlib.Path(__file__).parent.resolve())
-CNT_TO_FETCH = 10
+CNT_TO_FETCH = 5
+
+BASE_PATH = "./../bot/core/ml-models/"
 
 morph = pymorphy2.MorphAnalyzer()
 model_word2vec = gensim.models.KeyedVectors.load_word2vec_format(
-        "./model_word2vec.bin",
+        BASE_PATH+"model_word2vec.bin",
         binary=True)
 model_word2vec.init_sims(replace=True)
 
 desc2targetModel = catboost.CatBoostClassifier()
-desc2targetModel = desc2targetModel.load_model("../ml-models/trained-model-gpu-desc.cbm", format='cbm')
+desc2targetModel = desc2targetModel.load_model(BASE_PATH+"trained-model-gpu-desc.cbm", format='cbm')
 
 
 
@@ -95,6 +98,7 @@ def predict(data : dict) -> str:
 
 @background(schedule=1)
 def update_database():
+    print("UPDATING DATABASE")
     parsed_data = get_latest_from_vk(CNT_TO_FETCH)
     parsed_data.extend(get_last_vacancies_from_rabota_ru(CNT_TO_FETCH))
     parsed_data.extend(getLatestFromTrud(CNT_TO_FETCH))
@@ -104,31 +108,57 @@ def update_database():
                                 salary_from=position['salary_from'],
                                 salary_to=position['salary_to'],
                                 link=position['link'],
-                                )
-        new_pos.predicted_tag = predict(position)
+                                )[0]
+        
+        predicted_str = predict(position)
+        #print(predicted_str)
+        new_pos.predicted_tag = Tag.objects.get(name=predicted_str)
         new_pos.save()
 
-update_database(schedule=1)
+update_database(schedule=1, repeat=600)
 
 def telegram_bot_sendtext(bot_message, bot_chatID):
 
    bot_token = '2040176965:AAHk1imMOdXlI_67w8fquf0MZjs5EkL7ujw'
-   send_text = 'https://api.telegram.org/bot' + bot_token + '/sendMessage?chat_id=' + bot_chatID + '&parse_mode=Markdown&text=' + bot_message
+   send_text = 'https://api.telegram.org/bot' + bot_token + '/sendMessage?chat_id=' + str(bot_chatID) + '&parse_mode=Markdown&text=' + bot_message
 
    response = requests.get(send_text)
    return response.json()
 
 
+def format_item(item):
+    msg = ""
+    msg+="Название:\n"
+    msg+= item['custom_position']
+    msg+="\n\nОписание:\n"
+    if len(item.get("description"))>500:
+        msg+= item.get("description")[:497:]+"..."
+    else:
+        msg+= item.get("description")
+    msg+="\n\nСсылка:\n\n"
+    msg+= item.get("link")
+    return msg
+
 @background(schedule=1)
 def send_vacansies():
     users = User.objects.all()
     for user in users:
-        if (datetime.now() -  user.last_pong).days >= user.days_interval:
-            user.last_pong = datetime.now()
+        if (datetime.today().date() -  user.last_pong).days >= user.days_interval:
+            user.last_pong = datetime.today()
             user.save()
-            positions = Position.objects.filter(predicted_tag__in = user.tags).filter(salary_from__level__gt = user.salary_from)[:7:]
-            print(positions)
-            telegram_bot_sendtext("Привет!\n, лови-ка очередную подборку.", user.tg_id)
-            msg_text = ""
-            #Генерировать надо текст и отправлять
-send_vacansies(schedule=60)
+            tags = []
+            for i in user.tags.all():
+                tags.append(i.name)
+            positions = Position.objects.filter(predicted_tag__in = user.tags.all()).filter(salary_from__gte = user.salary_from)
+            umsg = "Привет!, лови-ка очередную подборку."
+            print(telegram_bot_sendtext(umsg, user.tg_id))
+            if (len(positions) < 5):
+                extend = Position.objects.all()[:5-len(positions):]
+                for i in extend: 
+                    print(telegram_bot_sendtext(format_item(i.__dict__), user.tg_id))
+            else:
+                positions = positions[:5:]
+            for i in positions:
+                print(telegram_bot_sendtext(format_item(i.__dict__), user.tg_id))
+
+send_vacansies(schedule=1, repeat=180)

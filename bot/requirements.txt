@@ -21,3 +21,4 @@ nltk==3.6.3
 pymorphy2==0.9.1
 catboost==1.0.0
 numpy==1.21.2
+googledrivedownloader==0.4
