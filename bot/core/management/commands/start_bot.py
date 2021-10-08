@@ -28,7 +28,6 @@ def start_bot():
         if call.data == "yes":
             link = create_link(call.message.chat.id)
             bot.send_message(call.message.chat.id, 'Отлично! Выбери интересующие тебя теги по ссылке - \n {link}'.format(link=link))
-            bot.register_next_step_handler(call.message, get_tags)
         if call.data in {'20' , '40' , '60' , '80' , '90' , '120' , '140', '160' , '200'} :
             user = User.objects.get(tg_id=call.message.chat.id)
             user.salary_from = int(call.data) * 1000
@@ -74,7 +73,6 @@ def start_bot():
         if message.text == "Изменить профиль":
             link = create_link(message.chat.id)
             bot.send_message(message.chat.id, 'Начнем! Выбери интересующие тебя теги по ссылке - \n{link}'.format(link=link))
-            bot.register_next_step_handler(message, get_tags)
         elif message.text == 'Обратная связь':
             bot.send_message(message.chat.id, "Рады вашим предложениям и пожеланиям!\nContact us: @qootee", reply_markup=menuKeyboard)
 
