@@ -48,10 +48,12 @@ class SelectTags(views.APIView):
     permission_classes = [AllowAny]
     def post(self, request):
         try:
+            print(request.data)
             user_id = request.data['user_id']
             selected_tags = request.data['selected_tags']
 
-            user = User.objects.get(tg_id=user_id)
+            user = User.objects.get_or_create(tg_id=int(user_id))[0]
+            user.save()
 
             for tag in selected_tags:
                 print(tag)
@@ -61,5 +63,5 @@ class SelectTags(views.APIView):
             telegram_bot_sendtext('Данные успешно сохранены.', str(user_id))
             
             return Response({'status': 'OK'}, status=status.HTTP_200_OK)
-        except Exception:
+        except Exception as e:
             return Response({'status': 'Bad Request'}, status=status.HTTP_400_BAD_REQUEST)
